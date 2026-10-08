@@ -79,7 +79,12 @@
 .skew-button { display: inline-flex; align-items: center; justify-content: center; transform: skewX(-8deg); }
 .skew-button > * { transform: skewX(8deg); }
 .stripe-panel { background-image: repeating-linear-gradient(-45deg, transparent 0, transparent 22px, rgba(0,0,0,.07) 23px, rgba(0,0,0,.07) 25px); }
-.service-card { clip-path: polygon(0 0, 100% 0, 100% 92%, 93% 100%, 0 100%); }
+.service-card { border-radius: 4px; }
+.skew-button-inner { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; transform: skewX(8deg); }
+@media (max-width: 639px) {
+  .skew-button { width: 100%; max-width: 100%; }
+  .hero-cta-row .skew-button { flex: 1 1 auto; min-width: 0; }
+}
 .project-card { min-height: 100%; }
 .field-label { display: block; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .14em; }
 .field-label input, .field-label select, .field-label textarea { margin-top: 10px; display: block; width: 100%; border: 1px solid rgba(0,0,0,.16); background: white; padding: 14px 15px; font-size: 14px; font-weight: 400; letter-spacing: 0; outline: none; transition: border-color .2s, box-shadow .2s; }
