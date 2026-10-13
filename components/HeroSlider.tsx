@@ -18,10 +18,10 @@ type HeroSliderProps = {
   interval?: number;
 };
 
-const COLUMNS = 7;
-const LEAF_MS = 860;
+const COLUMNS = 5;
+const LEAF_MS = 460;
 const STAGGER_MS = 70;
-const TRANSITION_MS = LEAF_MS + (COLUMNS - 1) * STAGGER_MS + 80;
+const TRANSITION_MS = LEAF_MS + (COLUMNS - 1) * STAGGER_MS + 30;
 
 type Curtain = {
   from: number;
@@ -43,43 +43,23 @@ function Chevron({ direction }: { direction: 'left' | 'right' }) {
   );
 }
 
-function SliceImage({ src, index }: { src: string; index: number }) {
-  return (
-    // Transient curtain slices share the slide URL already requested by next/image.
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
-      draggable={false}
-      decoding="async"
-      className={styles.sliceImage}
-      style={{ width: `${COLUMNS * 100}%`, left: `${-index * 100}%` }}
-    />
-  );
-}
-
 function CurtainPanels({ slides, curtain }: { slides: HeroSlide[]; curtain: Curtain }) {
-  const directionName = curtain.direction === 1 ? 'next' : 'prev';
-
   return (
-    <div className={styles.panels} data-direction={directionName} aria-hidden="true">
+    <div className={styles.panels} aria-hidden="true">
       {Array.from({ length: COLUMNS }, (_, index) => {
-        const order = curtain.direction === 1 ? index : COLUMNS - 1 - index;
         const style = {
           left: `${(index / COLUMNS) * 100}%`,
-          width: `calc(${100 / COLUMNS}% + 1px)`,
-          '--delay': `${order * STAGGER_MS}ms`,
+          width: `${100 / COLUMNS}%`,
+          '--delay': `${index * STAGGER_MS}ms`,
           '--leaf': `${LEAF_MS}ms`,
+          backgroundImage: `url("${slides[curtain.to].image}")`,
+          backgroundSize: `${COLUMNS * 100}% 100%`,
+          backgroundPosition: `${(index / (COLUMNS - 1)) * 100}% center`,
         } as CSSProperties;
 
         return (
           <div key={index} className={styles.column} style={style}>
-            <div className={styles.leafIn}>
-              <SliceImage src={slides[curtain.to].image} index={index} />
-            </div>
-            <div className={styles.leafOut}>
-              <SliceImage src={slides[curtain.from].image} index={index} />
-            </div>
+            <span className={styles.veil} />
           </div>
         );
       })}
@@ -107,15 +87,8 @@ function ArrowButton({
     >
       <Chevron direction={direction} />
       <span className={styles.preview}>
-        <span className={styles.previewMotion}>
-          <span className={styles.previewCard}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={slide.image} alt="" className={styles.previewImage} draggable={false} />
-            <span className={styles.previewCaption}>
-              <span className={styles.previewTitle}>{slide.title}</span>
-            </span>
-          </span>
-        </span>
+        <span className={styles.previewImage} style={{ backgroundImage: `url("${slide.image}")` }} />
+        <span className={styles.previewTitle}>{slide.title}</span>
       </span>
     </button>
   );
@@ -318,7 +291,7 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
             fill
             sizes="100vw"
             priority={index === 0}
-            className={`${styles.baseImage} ${index === settled ? styles.baseVisible : ''}`}
+            className={`${styles.baseImage} ${index === (curtain ? curtain.from : settled) ? styles.baseVisible : ''}`}
           />
         ))}
         {curtain ? <CurtainPanels slides={slides} curtain={curtain} /> : null}
