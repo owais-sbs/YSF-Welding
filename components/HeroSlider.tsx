@@ -33,6 +33,7 @@ const TRANSITION_MS = Math.round((LEAF_S + (COLUMNS - 1) * STAGGER_S) * 1000) + 
 const EASE = 'cubic-bezier(0.455, 0.03, 0.515, 0.955)'; // power1.inOut
 
 type Curtain = {
+  /** -1 = intro (incoming strips only, cream stage behind) */
   from: number;
   to: number;
 };
@@ -146,7 +147,7 @@ function CurtainPanels({
   return (
     <div ref={rootRef} className={styles.panels} aria-hidden="true">
       {renderLayer('in', curtain.to)}
-      {renderLayer('out', curtain.from)}
+      {curtain.from >= 0 ? renderLayer('out', curtain.from) : null}
     </div>
   );
 }
@@ -182,6 +183,7 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
   const [settled, setSettled] = useState(0);
   const [shown, setShown] = useState(0);
   const [curtain, setCurtain] = useState<Curtain | null>(null);
+  const [booting, setBooting] = useState(true);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -189,15 +191,16 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
   const rootRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const busy = useRef(false);
+  const busy = useRef(true);
   const timerRef = useRef<number | null>(null);
   const settledRef = useRef(0);
   const reducedRef = useRef(false);
+  const introStarted = useRef(false);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const goToRef = useRef<(to: number, direction: 1 | -1) => void>(() => {});
 
   const count = slides.length;
-  const paused = hovered || focused || curtain !== null;
+  const paused = booting || hovered || focused || curtain !== null;
   settledRef.current = settled;
   reducedRef.current = reducedMotion;
 
@@ -265,11 +268,37 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
     };
   }, []);
 
+  // Play curtain entrance on first paint / reload (Zenith first-slide reveal)
+  useEffect(() => {
+    if (!motionReady || stageSize.w <= 0 || introStarted.current || count === 0) return;
+    introStarted.current = true;
+
+    if (reducedMotion) {
+      busy.current = false;
+      setBooting(false);
+      setCurtain(null);
+      return;
+    }
+
+    busy.current = true;
+    setCurtain({ from: -1, to: 0 });
+    clearTimer();
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      setSettled(0);
+      setShown(0);
+      busy.current = false;
+      setCurtain(null);
+      setBooting(false);
+    }, TRANSITION_MS);
+  }, [motionReady, reducedMotion, stageSize.w, count]);
+
   useEffect(() => {
     if (!reducedMotion) return;
     clearTimer();
     busy.current = false;
     setCurtain(null);
+    setBooting(false);
   }, [reducedMotion]);
 
   useEffect(() => {
@@ -397,13 +426,13 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
             fill
             sizes="100vw"
             priority={index === 0}
-            className={`${styles.baseImage} ${!curtain && index === settled ? styles.baseVisible : ''}`}
+            className={`${styles.baseImage} ${!booting && !curtain && index === settled ? styles.baseVisible : ''}`}
           />
         ))}
         {curtain ? <CurtainPanels slides={slides} curtain={curtain} stageSize={stageSize} /> : null}
       </div>
 
-      {!curtain ? (
+      {!booting && !curtain ? (
         <div className={styles.copy} key={settled}>
           {slide.eyebrow ? <p className={styles.kicker}>{slide.eyebrow}</p> : null}
           <h2 className={styles.title}>{slide.title}</h2>
