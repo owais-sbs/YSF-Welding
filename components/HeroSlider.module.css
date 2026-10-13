@@ -15,6 +15,8 @@
 .stage {
   position: absolute;
   inset: 0;
+  /* Zenith wrap bg — shows between flipping strips */
+  background: rgb(246, 243, 238);
 }
 
 .baseImage {
@@ -42,26 +44,55 @@
   pointer-events: none;
 }
 
-.column {
+.layerIn,
+.layerOut {
+  position: absolute;
+  inset: 0;
+}
+
+.layerIn { z-index: 1; }
+.layerOut { z-index: 2; }
+
+/* RS `.slot` — clips the rotating leaf */
+.slot {
   position: absolute;
   top: 0;
   height: 100%;
   overflow: hidden;
-  background-repeat: no-repeat;
-  opacity: 0;
-  animation: columnShow 1ms linear forwards;
-  animation-delay: var(--delay);
 }
 
-.veil {
+/* RS `.slotslide` — WAAPI drives opacity + perspective(600) rotateY */
+.slotIn,
+.slotOut {
   position: absolute;
-  inset: 0;
-  background: #fff;
-  transform: scaleX(1);
-  transform-origin: right center;
-  will-change: transform;
-  animation: wipe var(--leaf) cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: var(--delay);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+.slotIn {
+  transform-origin: center left;
+  opacity: 0;
+  transform: perspective(600px) rotateY(90deg);
+}
+
+.slotOut {
+  transform-origin: center right;
+  opacity: 1;
+  transform: perspective(600px) rotateY(0deg);
+}
+
+/* Full-bleed image — pixel-sized like RS inner bg div */
+.slice {
+  position: absolute;
+  top: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
 .copy {
@@ -135,13 +166,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  width: 40px;
   height: 110px;
   margin-top: -55px;
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(26, 26, 26, 0.5);
   color: #fff;
   cursor: pointer;
   opacity: var(--scroll-opacity);
@@ -150,12 +181,12 @@
 
 .arrow:hover,
 .arrow:focus-visible {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(26, 26, 26, 0.85);
   color: #fff;
 }
 
 .navPrev { left: 30px; }
-.navNext { right: 40px; }
+.navNext { right: 30px; }
 
 .chevron {
   position: relative;
@@ -284,16 +315,6 @@
   to { transform: scale(1); }
 }
 
-@keyframes columnShow {
-  0%,
-  100% { opacity: 1; }
-}
-
-@keyframes wipe {
-  from { transform: scaleX(1); }
-  to { transform: scaleX(0); }
-}
-
 @media (max-width: 1023px) {
   .copy {
     padding: 4.25rem 7.5rem 5rem 9.5rem;
@@ -364,15 +385,10 @@
     transform: none;
   }
 
-  .column {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-
-  .veil {
-    animation: none;
-    opacity: 0;
+  .slotIn,
+  .slotOut {
+    opacity: 1 !important;
+    transform: none !important;
   }
 
   .baseVisible {

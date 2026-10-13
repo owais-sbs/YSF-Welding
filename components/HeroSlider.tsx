@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import Image from 'next/image';
 import styles from './HeroSlider.module.css';
 
@@ -18,15 +18,23 @@ type HeroSliderProps = {
   interval?: number;
 };
 
-const COLUMNS = 5;
-const LEAF_MS = 460;
-const STAGGER_MS = 70;
-const TRANSITION_MS = LEAF_MS + (COLUMNS - 1) * STAGGER_MS + 30;
+// Slider Revolution 6.3.6 `3dcurtain-vertical` (rs6.min.js c===18):
+// masterspeed h=2000, slots=7 (TR[11]), ease power1.inOut
+// duration = h/slots/1000, delay = e*(h/slots/2000)
+// next:  from {opacity:0, rotationY:90, transformPerspective:600, transformOrigin:"center left"}
+//        to   {opacity:1, rotationY:0}
+// active: from {opacity:1, rotationY:0, transformOrigin:"center right"}
+//         to   {opacity:0, rotationY:110}
+const COLUMNS = 7;
+const MASTER_MS = 2000;
+const LEAF_S = MASTER_MS / COLUMNS / 1000;
+const STAGGER_S = MASTER_MS / COLUMNS / 2000;
+const TRANSITION_MS = Math.round((LEAF_S + (COLUMNS - 1) * STAGGER_S) * 1000) + 80;
+const EASE = 'cubic-bezier(0.455, 0.03, 0.515, 0.955)'; // power1.inOut
 
 type Curtain = {
   from: number;
   to: number;
-  direction: 1 | -1;
 };
 
 function mod(index: number, count: number) {
@@ -43,26 +51,102 @@ function Chevron({ direction }: { direction: 'left' | 'right' }) {
   );
 }
 
-function CurtainPanels({ slides, curtain }: { slides: HeroSlide[]; curtain: Curtain }) {
-  return (
-    <div className={styles.panels} aria-hidden="true">
-      {Array.from({ length: COLUMNS }, (_, index) => {
-        const style = {
-          left: `${(index / COLUMNS) * 100}%`,
-          width: `${100 / COLUMNS}%`,
-          '--delay': `${index * STAGGER_MS}ms`,
-          '--leaf': `${LEAF_MS}ms`,
-          backgroundImage: `url("${slides[curtain.to].image}")`,
-          backgroundSize: `${COLUMNS * 100}% 100%`,
-          backgroundPosition: `${(index / (COLUMNS - 1)) * 100}% center`,
-        } as CSSProperties;
+function CurtainPanels({
+  slides,
+  curtain,
+  stageSize,
+}: {
+  slides: HeroSlide[];
+  curtain: Curtain;
+  stageSize: { w: number; h: number };
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { w: stageW, h: stageH } = stageSize;
+  const slotW = stageW / COLUMNS;
 
-        return (
-          <div key={index} className={styles.column} style={style}>
-            <span className={styles.veil} />
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || stageW <= 0) return;
+
+    const animations: Animation[] = [];
+    const outs = root.querySelectorAll<HTMLElement>('[data-slot="out"]');
+    const inns = root.querySelectorAll<HTMLElement>('[data-slot="in"]');
+
+    inns.forEach((el, e) => {
+      el.style.transformOrigin = 'center left';
+      animations.push(
+        el.animate(
+          [
+            { opacity: 0, transform: 'perspective(600px) rotateY(90deg)' },
+            { opacity: 1, transform: 'perspective(600px) rotateY(0deg)' },
+          ],
+          {
+            duration: LEAF_S * 1000,
+            delay: e * STAGGER_S * 1000,
+            easing: EASE,
+            fill: 'both',
+          },
+        ),
+      );
+    });
+
+    outs.forEach((el, e) => {
+      el.style.transformOrigin = 'center right';
+      animations.push(
+        el.animate(
+          [
+            { opacity: 1, transform: 'perspective(600px) rotateY(0deg)' },
+            { opacity: 0, transform: 'perspective(600px) rotateY(110deg)' },
+          ],
+          {
+            duration: LEAF_S * 1000,
+            delay: e * STAGGER_S * 1000,
+            easing: EASE,
+            fill: 'both',
+          },
+        ),
+      );
+    });
+
+    return () => {
+      animations.forEach((a) => a.cancel());
+    };
+  }, [curtain.from, curtain.to, stageW]);
+
+  if (stageW <= 0 || stageH <= 0) return null;
+
+  const renderLayer = (kind: 'in' | 'out', slideIndex: number) => (
+    <div className={kind === 'in' ? styles.layerIn : styles.layerOut}>
+      {Array.from({ length: COLUMNS }, (_, index) => (
+        <div
+          key={`${kind}-${slideIndex}-${index}`}
+          className={styles.slot}
+          style={{
+            left: index * slotW,
+            width: slotW + 1.5,
+            height: stageH,
+          }}
+        >
+          <div data-slot={kind} className={kind === 'in' ? styles.slotIn : styles.slotOut}>
+            <div
+              className={styles.slice}
+              style={{
+                width: stageW,
+                height: stageH,
+                left: -index * slotW,
+                backgroundImage: `url("${slides[slideIndex].image}")`,
+              }}
+            />
           </div>
-        );
-      })}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div ref={rootRef} className={styles.panels} aria-hidden="true">
+      {renderLayer('in', curtain.to)}
+      {renderLayer('out', curtain.from)}
     </div>
   );
 }
@@ -102,7 +186,9 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
   const [focused, setFocused] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [motionReady, setMotionReady] = useState(false);
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
   const rootRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
   const timerRef = useRef<number | null>(null);
   const settledRef = useRef(0);
@@ -123,7 +209,7 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
   };
 
   const goTo = useCallback(
-    (to: number, direction: 1 | -1) => {
+    (to: number, _direction: 1 | -1) => {
       if (count < 2 || busy.current) return;
       const dest = mod(to, count);
       const from = settledRef.current;
@@ -137,11 +223,11 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
       }
 
       busy.current = true;
-      setCurtain({ from, to: dest, direction });
-      setSettled(dest);
+      setCurtain({ from, to: dest });
       clearTimer();
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null;
+        setSettled(dest);
         busy.current = false;
         setCurtain(null);
       }, TRANSITION_MS);
@@ -158,6 +244,25 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
     setMotionReady(true);
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    const node = stageRef.current;
+    if (!node) return;
+
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      setStageSize({ w: Math.round(rect.width), h: Math.round(rect.height) });
+    };
+
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(node);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
 
   useEffect(() => {
@@ -188,16 +293,17 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
       frame = 0;
       const rect = node.getBoundingClientRect();
       const height = rect.height || 1;
-      const progress = Math.min(1, Math.max(0, -rect.top) / height);
+      const progress = Math.min(1, Math.max(0, -rect.top / height));
       if (progress <= 0) {
         clear();
         return;
       }
       node.setAttribute('data-blur', 'true');
-      node.style.setProperty('--scroll-blur', `${(progress * 12).toFixed(2)}px`);
-      node.style.setProperty('--scroll-opacity', (1 - progress * 0.6).toFixed(3));
-      node.style.setProperty('--scroll-shift', `${(progress * -20).toFixed(2)}px`);
+      node.style.setProperty('--scroll-blur', `${progress * 12}px`);
+      node.style.setProperty('--scroll-opacity', `${1 - progress * 0.6}`);
+      node.style.setProperty('--scroll-shift', `${progress * -20}px`);
     };
+
     const onScroll = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(update);
@@ -229,7 +335,7 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
       const root = rootRef.current;
       const active = document.activeElement;
       if (!root || !active || !root.contains(active)) return;
-      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
       if (event.key === 'ArrowRight') goToRef.current(settledRef.current + 1, 1);
       else goToRef.current(settledRef.current - 1, -1);
@@ -258,7 +364,7 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
 
   if (count === 0) return null;
 
-  const slide = slides[shown];
+  const slide = slides[settled];
   const previous = slides[mod(shown - 1, count)];
   const next = slides[mod(shown + 1, count)];
 
@@ -282,7 +388,7 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
         pointerRef.current = null;
       }}
     >
-      <div className={styles.stage}>
+      <div ref={stageRef} className={styles.stage}>
         {slides.map((item, index) => (
           <Image
             key={`${item.image}-${index}`}
@@ -291,22 +397,24 @@ export default function HeroSlider({ slides, interval = 6000 }: HeroSliderProps)
             fill
             sizes="100vw"
             priority={index === 0}
-            className={`${styles.baseImage} ${index === (curtain ? curtain.from : settled) ? styles.baseVisible : ''}`}
+            className={`${styles.baseImage} ${!curtain && index === settled ? styles.baseVisible : ''}`}
           />
         ))}
-        {curtain ? <CurtainPanels slides={slides} curtain={curtain} /> : null}
+        {curtain ? <CurtainPanels slides={slides} curtain={curtain} stageSize={stageSize} /> : null}
       </div>
 
-      <div className={styles.copy} key={shown}>
-        {slide.eyebrow ? <p className={styles.kicker}>{slide.eyebrow}</p> : null}
-        <h2 className={styles.title}>{slide.title}</h2>
-        <p className={styles.lead}>{slide.text}</p>
-        {slide.ctaLabel && slide.ctaHref ? (
-          <a className={`btn btn-primary ${styles.cta}`} href={slide.ctaHref}>
-            {slide.ctaLabel}
-          </a>
-        ) : null}
-      </div>
+      {!curtain ? (
+        <div className={styles.copy} key={settled}>
+          {slide.eyebrow ? <p className={styles.kicker}>{slide.eyebrow}</p> : null}
+          <h2 className={styles.title}>{slide.title}</h2>
+          <p className={styles.lead}>{slide.text}</p>
+          {slide.ctaLabel && slide.ctaHref ? (
+            <a className={`btn btn-primary ${styles.cta}`} href={slide.ctaHref}>
+              {slide.ctaLabel}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
 
       {count > 1 ? (
         <>
