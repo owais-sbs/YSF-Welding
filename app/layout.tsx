@@ -1,8 +1,20 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Fira_Sans, Roboto } from 'next/font/google';
 
-const inter = Inter({ subsets: ['latin'] });
+const firaSans = Fira_Sans({
+  weight: '700',
+  subsets: ['latin'],
+  variable: '--font-fira',
+  display: 'swap',
+});
+
+const roboto = Roboto({
+  weight: ['400', '500', '700'],
+  subsets: ['latin'],
+  variable: '--font-roboto',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'YSF Welding | Steel Fabrication & Welding in Sharjah',
@@ -15,5 +27,9 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en"><body className={inter.className}>{children}</body></html>;
+  return (
+    <html lang="en" className={`${firaSans.variable} ${roboto.variable}`}>
+      <body>{children}</body>
+    </html>
+  );
 }
